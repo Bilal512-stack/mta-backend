@@ -1,13 +1,17 @@
 const mongoose = require('mongoose');
 
-const TransporterSchema = new mongoose.Schema({
-  uid: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  phone: { type: String, required: true },
-  truckType: { type: String, required: true },
-  isAvailable: { type: String, default: 'false' },
-  currentOrderId: { type: String, default: null },
+const transporterSchema = new mongoose.Schema({
+  uid: String,
+  name: String,
+  phone: String,
+  truckType: String,
+  isAvailable: String,
+  currentorderId: String,
+  routes: Array,
+  workDays: Array,
+  workHours: Object,
+  vehicles: Array,
 });
 
-const Transporter = mongoose.model('Transporter', TransporterSchema);
-module.exports = Transporter;
+module.exports = mongoose.model('Transporter', transporterSchema);
+
