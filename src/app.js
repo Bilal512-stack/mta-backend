@@ -19,9 +19,6 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-router.put('/:id', authMiddleware, updateTransporter);
-app.use('/api/transporters', router);
-
 // Routes publiques (authentification, utilisateurs)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

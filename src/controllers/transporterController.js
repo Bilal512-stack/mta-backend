@@ -22,7 +22,7 @@ const createTransporter = async (req, res) => {
 
     res.status(201).json({
       message: 'Transporteur créé avec succès',
-      uid: newTransporter._id.toString(),
+      _id: newTransporter._id.toString(),
     });
   } catch (error) {
     console.error('Erreur création transporteur :', error);
