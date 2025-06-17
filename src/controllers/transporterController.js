@@ -1,19 +1,37 @@
 const Transporter = require('../models/Transporter');
 
 const createTransporter = async (req, res) => {
-  const { name, email, phone, truckType } = req.body;
+  const {
+    name,
+    email,
+    phone,
+    truckType,
+    licensePlate,
+    truckCapacity,
+    lastActive,
+    isAvailable,
+  } = req.body;
 
   if (!name || !email) {
     return res.status(400).json({ error: 'Nom et email sont requis' });
   }
 
   try {
+    // Vérifie si email existe déjà
+    const existing = await Transporter.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ error: 'Un transporteur avec cet email existe déjà.' });
+    }
+
     const newTransporter = new Transporter({
       name,
       email,
       phone,
       truckType,
-      isAvailable: true,
+      licensePlate,
+      truckCapacity,
+      lastActive,
+      isAvailable: isAvailable ?? true,
       onboardingCompleted: false,
       createdAt: new Date(),
     });
@@ -29,6 +47,7 @@ const createTransporter = async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 };
+
 
 const updateTransporter = async (req, res) => {
   try {

@@ -1,7 +1,5 @@
 const mongoose = require('mongoose');
 
-
-
 const routeSchema = new mongoose.Schema({
   from: String,
   to: String,
@@ -25,6 +23,9 @@ const transporterSchema = new mongoose.Schema({
   workHours: { type: Object, default: {} }, // horaires de travail
   vehicles: [vehicleSchema], // tableau d’objets vehicles
   onboardingCompleted: { type: Boolean, default: false },
+  licensePlate: String,
+  truckCapacity: Number,
+  lastActive: Date,
   createdAt: { type: Date, default: Date.now },
 });
 
