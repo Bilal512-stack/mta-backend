@@ -25,6 +25,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/transporters', transporterRoutes);
+app.use('/api/transporters', require('./routes/transporter'));
+
 app.use('/api', driverRoutes);
 app.use('/api', require('./routes/orderDetails'));
 

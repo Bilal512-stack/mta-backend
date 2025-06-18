@@ -47,15 +47,15 @@ router.post('/register', async (req, res) => {
     );
 
     res.status(201).json({
-      message: 'Inscription réussie',
-      token,
-      uid: newTransporter._id.toString(), // 👉 l’_id MongoDB
-      user: {
-        id: newUser._id,
-        email: newUser.email,
-        name: newUser.name,
-      },
-    });
+  message: 'Inscription réussie',
+  token,
+  user: {
+    _id: newTransporter._id.toString(), // Le transporteur _id, clé principale côté frontend
+    email: newUser.email,
+    name: newUser.name,
+  }
+});
+
   } catch (error) {
     console.error('Erreur Register:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -65,34 +65,47 @@ router.post('/register', async (req, res) => {
 // LOGIN
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    const transporter = await Transporter.findOne({ email });
+    if (!transporter) {
+      return res.status(404).json({ error: 'Transporteur non trouvé' });
+    }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: 'Mot de passe incorrect' });
+    const isMatch = await bcrypt.compare(password, transporter.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Mot de passe incorrect' });
+    }
 
     const token = jwt.sign(
-      { id: user._id, email: user.email },
+      { id: transporter._id, email: transporter.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: '7d' }
     );
 
     res.status(200).json({
       message: 'Connexion réussie',
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
+        _id: transporter._id,
+        email: transporter.email,
+        name: transporter.name,
       },
     });
   } catch (error) {
-    console.error('Erreur Login:', error);
+    console.error('Erreur login transporteur:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+
+// ⚠️ Cette ligne doit venir APRÈS les routes comme /login
+router.get('/:id', async (req, res) => {
+  const transporter = await Transporter.findById(req.params.id);
+  if (!transporter) {
+    return res.status(404).json({ message: 'Transporteur non trouvé' });
+  }
+  res.status(200).json(transporter);
+});
+
 
 // ONBOARDING
 router.post('/onboarding', async (req, res) => {

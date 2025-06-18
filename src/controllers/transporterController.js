@@ -1,9 +1,11 @@
+const bcrypt = require('bcryptjs');
 const Transporter = require('../models/Transporter');
 
 const createTransporter = async (req, res) => {
   const {
     name,
     email,
+    password, // ➕ on récupère le password
     phone,
     truckType,
     licensePlate,
@@ -12,20 +14,23 @@ const createTransporter = async (req, res) => {
     isAvailable,
   } = req.body;
 
-  if (!name || !email) {
-    return res.status(400).json({ error: 'Nom et email sont requis' });
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Nom, email et mot de passe sont requis.' });
   }
 
   try {
-    // Vérifie si email existe déjà
     const existing = await Transporter.findOne({ email });
     if (existing) {
       return res.status(400).json({ error: 'Un transporteur avec cet email existe déjà.' });
     }
 
+    // 🔐 Hash du mot de passe
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const newTransporter = new Transporter({
       name,
       email,
+      password: hashedPassword, // ✅ mot de passe hashé
       phone,
       truckType,
       licensePlate,
@@ -47,7 +52,6 @@ const createTransporter = async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 };
-
 
 const updateTransporter = async (req, res) => {
   try {
