@@ -5,14 +5,21 @@ const createTransporter = async (req, res) => {
   const {
     name,
     email,
-    password, // ➕ on récupère le password
+    password,
     phone,
     truckType,
     licensePlate,
     truckCapacity,
     lastActive,
     isAvailable,
+    routes,
+    workDays,
+    workHours,
+    vehicles,
   } = req.body;
+
+  // Affiche ce que le backend reçoit pour debug
+  console.log('Données reçues pour création transporteur:', req.body);
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Nom, email et mot de passe sont requis.' });
@@ -24,21 +31,35 @@ const createTransporter = async (req, res) => {
       return res.status(400).json({ error: 'Un transporteur avec cet email existe déjà.' });
     }
 
-    // 🔐 Hash du mot de passe
+    // Hash du mot de passe
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Parse workHours s'il est string (ex: "08:00 - 17:00")
+    let parsedWorkHours = {};
+    if (typeof workHours === 'string') {
+      const [start, end] = workHours.split(' - ').map(str => str.trim());
+      parsedWorkHours = { start, end };
+    } else if (typeof workHours === 'object' && workHours !== null) {
+      parsedWorkHours = workHours;
+    }
+
+    // Création de l'objet Transporter avec tous les champs
     const newTransporter = new Transporter({
       name,
       email,
-      password: hashedPassword, // ✅ mot de passe hashé
+      password: hashedPassword,
       phone,
       truckType,
       licensePlate,
       truckCapacity,
-      lastActive,
+      lastActive: lastActive ? new Date(lastActive) : undefined,
       isAvailable: isAvailable ?? true,
       onboardingCompleted: false,
       createdAt: new Date(),
+      routes: Array.isArray(routes) ? routes : [],
+      workDays: Array.isArray(workDays) ? workDays : [],
+      workHours: parsedWorkHours,
+      vehicles: Array.isArray(vehicles) ? vehicles : [],
     });
 
     await newTransporter.save();
@@ -52,6 +73,7 @@ const createTransporter = async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 };
+
 
 const updateTransporter = async (req, res) => {
   try {

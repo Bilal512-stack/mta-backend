@@ -10,9 +10,8 @@ const ordersRoutes = require('./routes/orders');
 const transporterRoutes = require('./routes/transporter');
 const driverRoutes = require('./routes/driver');
 const orderDetailsRoutes = require('./routes/orderDetails');
-
-// 🔐 Middleware Clerk personnalisé (via @clerk/backend)
-// const verifyToken = require('./middlewares/verifyToken');
+const assignRoutes = require('./routes/assign');
+const statsRoutes = require('./routes/stats');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -25,13 +24,11 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/transporters', transporterRoutes);
-app.use('/api/transporters', require('./routes/transporter'));
-
-app.use('/api', driverRoutes);
-app.use('/api', require('./routes/orderDetails'));
-
-
-// 🔐 Routes protégées (vérifiées via verifyToken.js)
+app.use('/api/orders', ordersRoutes);
+app.use('/api/driver', driverRoutes);
+app.use('/api/assign-order', assignRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/order-details', orderDetailsRoutes);
 
 // 🧾 Gestion des 404
 app.use((req, res) => {

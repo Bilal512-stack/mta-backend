@@ -2,10 +2,10 @@ const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema(
   {
-    orderNumber: { type: String, required: true },
+    clientId: { type: String, required: true },  // ajout clientId obligatoire
     status: {
       type: String,
-      enum: ['pending', 'assigned', 'in-transit', 'delivered'],
+      enum: ['en attente', 'assignée', 'en cours', 'livrée'], // enum français
       required: true,
     },
     truckType: { type: String },

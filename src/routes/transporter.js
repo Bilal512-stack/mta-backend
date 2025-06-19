@@ -100,17 +100,33 @@ router.get('/', async (req, res) => {
 // 🔍 Obtenir un transporteur par email
 router.get('/by-email/:email', async (req, res) => {
   const { email } = req.params;
+  console.log('📥 Requête reçue pour email :', email);
+
   try {
     const transporter = await Transporter.findOne({ email });
+
     if (!transporter) {
       return res.status(404).json({ error: 'Transporteur introuvable' });
     }
-    res.json(transporter);
+
+    console.log('📦 Transporteur trouvé :', transporter.toObject());
+
+    res.json({
+      ...transporter.toObject(),
+      routes: transporter.routes || [],
+      workDays: transporter.workDays || [],
+      workHours: transporter.workHours || '',
+      availability: transporter.availability || { start: '', end: '' },
+      vehicles: transporter.vehicles || [],
+    });
+
   } catch (err) {
-    console.error(err);
+    console.error('❌ Erreur lors de la récupération du transporteur :', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+
+
 
 // ✅ Mettre à jour la disponibilité (toggle depuis le dashboard)
 router.patch('/:id/availability', async (req, res) => {
