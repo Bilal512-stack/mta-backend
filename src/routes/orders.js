@@ -4,7 +4,7 @@ const router = express.Router();
 
 // Fonction utilitaire pour calculer le montant
 function calculateOrderAmount(order) {
-  const baseAmount = order.distance * 0.01 + order.weight * 2;
+  const baseAmount = (order.distance || 0) * 0.01 + (order.weight || 0) * 2;
 
   let truckTypeBonus = 0;
   switch (order.truckType) {
@@ -134,6 +134,47 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Erreur création commande:', error);
     res.status(500).json({ error: 'Erreur serveur lors de la création de la commande' });
+  }
+});
+
+/**
+ * PUT /orders/:id - Met à jour une commande existante
+ */
+router.put('/:id', async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const updateData = req.body;
+
+    // Recalculer le montant si besoin
+    if (updateData.distance || updateData.weight || updateData.truckType || updateData.nature) {
+      updateData.montant = calculateOrderAmount(updateData);
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, { new: true });
+
+    if (!updatedOrder) return res.status(404).json({ error: 'Commande non trouvée' });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Erreur mise à jour commande:', error);
+    res.status(500).json({ error: 'Erreur serveur lors de la mise à jour' });
+  }
+});
+
+/**
+ * DELETE /orders/:id - Supprime une commande
+ */
+router.delete('/:id', async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const deletedOrder = await Order.findByIdAndDelete(orderId);
+
+    if (!deletedOrder) return res.status(404).json({ error: 'Commande non trouvée' });
+
+    res.json({ message: 'Commande supprimée avec succès' });
+  } catch (error) {
+    console.error('Erreur suppression commande:', error);
+    res.status(500).json({ error: 'Erreur serveur lors de la suppression' });
   }
 });
 
