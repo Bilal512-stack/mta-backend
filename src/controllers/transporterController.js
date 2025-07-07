@@ -18,7 +18,6 @@ const createTransporter = async (req, res) => {
     vehicles,
   } = req.body;
 
-  // Affiche ce que le backend reçoit pour debug
   console.log('Données reçues pour création transporteur:', req.body);
 
   if (!name || !email || !password) {
@@ -31,10 +30,8 @@ const createTransporter = async (req, res) => {
       return res.status(400).json({ error: 'Un transporteur avec cet email existe déjà.' });
     }
 
-    // Hash du mot de passe
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Parse workHours s'il est string (ex: "08:00 - 17:00")
     let parsedWorkHours = {};
     if (typeof workHours === 'string') {
       const [start, end] = workHours.split(' - ').map(str => str.trim());
@@ -43,7 +40,6 @@ const createTransporter = async (req, res) => {
       parsedWorkHours = workHours;
     }
 
-    // Création de l'objet Transporter avec tous les champs
     const newTransporter = new Transporter({
       name,
       email,
@@ -64,6 +60,13 @@ const createTransporter = async (req, res) => {
 
     await newTransporter.save();
 
+    // 🔔 Envoyer une notification socket.io pour informer le dashboard
+    req.app.get('io').emit('newTransporter', {
+      transporterId: newTransporter._id,
+      name: newTransporter.name,
+      email: newTransporter.email,
+    });
+
     res.status(201).json({
       message: 'Transporteur créé avec succès',
       _id: newTransporter._id.toString(),
@@ -74,17 +77,24 @@ const createTransporter = async (req, res) => {
   }
 };
 
-
 const updateTransporter = async (req, res) => {
   try {
     const { id } = req.params;
     const updatedData = req.body;
+
+    // 🔐 Si le mot de passe est modifié, on le re-hash
+    if (updatedData.password) {
+      updatedData.password = await bcrypt.hash(updatedData.password, 10);
+    }
 
     const updatedTransporter = await Transporter.findByIdAndUpdate(id, updatedData, { new: true });
 
     if (!updatedTransporter) {
       return res.status(404).json({ message: "Transporteur non trouvé" });
     }
+
+    // 🔔 Envoyer une notification socket.io pour informer le dashboard
+    req.app.get('io').emit('transporterUpdated', updatedTransporter);
 
     res.status(200).json(updatedTransporter);
   } catch (error) {

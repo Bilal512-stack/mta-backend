@@ -12,60 +12,60 @@ router.get('/', async (req, res) => {
   try {
     const now = new Date();
 
-    // Dates de référence
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-    const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    // Toutes les commandes
     const orders = await Order.find({});
     const ordersThisMonth = await Order.find({ date: { $gte: startOfMonth } });
-    const ordersLast30Days = await Order.find({ date: { $gte: thirtyDaysAgo } });
+    const ordersLastMonth = await Order.find({ date: { $gte: startOfLastMonth, $lte: endOfLastMonth } });
 
-    // Tous les utilisateurs
     const users = await User.find({ role: 'client' });
+    const usersThisMonth = await User.find({ role: 'client', createdAt: { $gte: startOfMonth } });
+    const usersLastMonth = await User.find({ role: 'client', createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } });
 
-    // Statistiques
     const totalSales = calculateSum(orders, 'montant');
     const salesThisMonth = calculateSum(ordersThisMonth, 'montant');
-    const salesLastMonth = calculateSum(await Order.find({
-      date: { $gte: lastMonth, $lt: startOfMonth }
-    }), 'montant');
+    const salesLastMonth = calculateSum(ordersLastMonth, 'montant');
 
-    // % d’évolution
-    const salesGrowth =
-      salesLastMonth === 0 ? '+100%' :
-      ((salesThisMonth - salesLastMonth) / salesLastMonth * 100).toFixed(1) + '%';
+    const salesGrowth = salesLastMonth === 0 ? 100 : ((salesThisMonth - salesLastMonth) / salesLastMonth) * 100;
+    const ordersGrowth = ordersLastMonth.length === 0 ? 100 : ((ordersThisMonth.length - ordersLastMonth.length) / ordersLastMonth.length) * 100;
+    const clientsGrowth = usersLastMonth.length === 0 ? 100 : ((usersThisMonth.length - usersLastMonth.length) / usersLastMonth.length) * 100;
 
-    const ordersGrowth = (
-      (ordersThisMonth.length - ordersLast30Days.length) / (ordersLast30Days.length || 1)
-    ).toFixed(1) + '%';
+    const commandesParStatut = {
+      'En attente': 0,
+      'Assignée': 0,
+      'En cours': 0,
+      'Livrée': 0,
+      'Annulée': 0,
+    };
 
-    const clientsGrowth = (
-      (users.length - 10) / 10 * 100 // Remplace 10 par la valeur du mois précédent si tu la stockes
-    ).toFixed(1) + '%';
+    orders.forEach(order => {
+      if (commandesParStatut.hasOwnProperty(order.status)) {
+        commandesParStatut[order.status]++;
+      }
+    });
 
     const stats = {
       ventes: {
         total: totalSales,
-        pourcentage: salesGrowth,
-        periode: 'ce mois'
+        pourcentage: parseFloat(salesGrowth.toFixed(1)),
+        periode: 'ce mois',
       },
       commandes: {
         total: orders.length,
-        pourcentage: ordersGrowth,
-        periode: '30 derniers jours'
+        pourcentage: parseFloat(ordersGrowth.toFixed(1)),
+        periode: 'ce mois',
       },
       clients: {
         total: users.length,
-        pourcentage: clientsGrowth,
-        periode: '30 derniers jours'
-      }
+        pourcentage: parseFloat(clientsGrowth.toFixed(1)),
+        periode: 'ce mois',
+      },
+      commandesParStatut,
     };
 
     console.log('📊 Stats calculées:', stats);
-
     res.json(stats);
   } catch (error) {
     console.error('Erreur API stats:', error);

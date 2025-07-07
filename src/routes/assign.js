@@ -1,61 +1,97 @@
+// routes/assign.js
 const express = require('express');
+const Transporter = require('../models/Transporter');
+const Order = require('../models/Order');
 const router = express.Router();
 
-// Import des modèles MongoDB (adapte les chemins si besoin)
-const Order = require('../models/Order');
-const Transporter = require('../models/Transporter');
+const getCurrentDay = () => {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long' });
+};
+
+const getCurrentTime = () => {
+  const now = new Date();
+  return now.toTimeString().slice(0, 5); // format "HH:MM"
+};
 
 router.post('/:orderId', async (req, res) => {
-  const { orderId } = req.params;
-
   try {
+    const { orderId } = req.params;
+
+    // 1️⃣ Récupérer la commande
     const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+    if (!order) return res.status(404).json({ error: 'Commande non trouvée' });
 
-    if (order.transporterId)
-      return res.status(400).json({ error: 'Commande déjà assignée' });
+    if (order.status !== 'en attente') {
+      return res.status(400).json({ error: 'La commande n\'est pas disponible pour l\'assignation' });
+    }
 
-    const transporters = await Transporter.find({ isAvailable: true });
+    const today = getCurrentDay();
+    const currentTime = getCurrentTime();
 
-    const eligibleByRoute = transporters.filter((t) =>
-      t.routes.some(
-        (r) =>
-          order.pickup.address.toLowerCase().includes(r.from.toLowerCase()) &&
-          order.delivery.address.toLowerCase().includes(r.to.toLowerCase())
-      )
-    );
+    // 2️⃣ Recherche d’un transporteur disponible et compatible
+    const transporters = await Transporter.find({
+      isAvailable: true,
+      currentorderId: null,
+      truckCapacity: { $gte: order.weight },
+      workDays: today,
+    });
 
-    const eligibleByCapacity = eligibleByRoute.filter(
-      (t) => t.truckCapacity >= order.weight
-    );
+    if (transporters.length === 0) {
+      return res.status(404).json({ error: 'Aucun transporteur disponible aujourd\'hui' });
+    }
 
-    const eligibleByVehicle = eligibleByCapacity.filter((t) =>
-      t.vehicles.some((v) =>
-        v.type.toLowerCase().includes(order.truckType.toLowerCase())
-      )
-    );
+    // 3️⃣ Filtrer par horaires et itinéraires
+    const compatibleTransporter = transporters.find(transporter => {
+      if (transporter.workHours && transporter.workHours.start && transporter.workHours.end) {
+        if (currentTime < transporter.workHours.start || currentTime > transporter.workHours.end) {
+          return false;
+        }
+      }
 
-    if (eligibleByVehicle.length === 0)
-      return res.status(404).json({ error: 'Aucun transporteur éligible' });
+      return transporter.routes.some(route =>
+        route.from && route.to &&
+        order.senderAddress.includes(route.from) &&
+        order.recipientAddress.includes(route.to)
+      );
+    });
 
-    const selected = eligibleByVehicle[0];
+    if (!compatibleTransporter) {
+      return res.status(404).json({ error: 'Aucun transporteur disponible sur cet itinéraire ou en ce moment' });
+    }
 
-    order.transporterId = selected._id;
+    // 4️⃣ Mise à jour du transporteur
+    compatibleTransporter.currentorderId = order._id;
+    compatibleTransporter.isAvailable = false;
+    await compatibleTransporter.save();
+
+    // 5️⃣ Mise à jour de la commande
+    order.transporterId = compatibleTransporter._id;
     order.status = 'assignée';
     await order.save();
 
-    selected.currentOrderId = order._id;
-    selected.isAvailable = false;
-    await selected.save();
+    // ✅ Émettre la notification socket.io
+    const io = req.app.get('io'); // Récupérer io injecté dans app.js
+    if (io) {
+      io.emit('orderAssigned', {
+        orderId: order._id,
+        transporterId: compatibleTransporter._id,
+        transporterName: compatibleTransporter.name,
+        transporterPhone: compatibleTransporter.phone,
+      });
+    }
 
-    res.status(200).json({
-      message: 'Commande assignée automatiquement',
-      orderId: order._id,
-      transporter: selected.name,
+    return res.status(200).json({
+      message: 'Transporteur assigné avec succès',
+      transporter: {
+        name: compatibleTransporter.name,
+        phone: compatibleTransporter.phone,
+        email: compatibleTransporter.email,
+      },
     });
-  } catch (err) {
-    console.error('❌ Erreur assignation :', err);
-    res.status(500).json({ error: 'Erreur serveur' });
+
+  } catch (error) {
+    console.error('Erreur assignation automatique:', error);
+    res.status(500).json({ error: 'Erreur serveur lors de l\'assignation' });
   }
 });
 

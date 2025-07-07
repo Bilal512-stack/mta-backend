@@ -3,25 +3,58 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const User = require('../models/User');
+const authMiddleware = require('../middlewares/authmiddleware');
 
-// Middleware JWT (conservé pour réactivation future)
-// function authenticateToken(req, res, next) {
-//  const authHeader = req.headers['authorization'];
-//  const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
-
- // if (!token) return res.status(401).json({ error: 'Token manquant' });
-
-  //jwt.verify(token, process.env.JWT_SECRET || 'secret', (err, user) => {
-  //  if (err) return res.status(403).json({ error: 'Token invalide' });
-   // req.user = user;
-   // next();
- // });
-// }
-
-// ✅ Inscription
-router.post('/register', async (req, res) => {
+// ✅ Création d'utilisateur simple (Dashboard)
+router.post('/create-user', authMiddleware, async (req, res) => {
   try {
-    const { email, password, name, prenom, nom, role, status } = req.body;
+    // ✅ Vérification si l'utilisateur connecté est admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès interdit. Seul un administrateur peut créer des utilisateurs.' });
+    }
+
+    const { email, prenom, nom, role, status, adresse, ville, telephone, commandes, derniereCommande } = req.body;
+
+    if (!email || !prenom || !nom) {
+      return res.status(400).json({ error: 'Email, prénom et nom obligatoires' });
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: 'Email déjà utilisé' });
+
+    const newUser = new User({
+      email,
+      prenom,
+      nom,
+      adresse: adresse || '',
+      ville: ville || '',
+      telephone: telephone || '',
+      role: role || 'client',
+      status: status || 'actif',
+      dateInscription: new Date(),
+    });
+
+    await newUser.save();
+
+    // ✅ Si tu veux émettre un socket :
+    // const io = req.app.get('io');
+    // io.emit('newUserCreated', { email: newUser.email, prenom: newUser.prenom, nom: newUser.nom });
+
+    res.status(201).json({ message: 'Utilisateur créé avec succès', user: newUser });
+  } catch (error) {
+    console.error('Erreur création utilisateur:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ✅ Création d'un utilisateur par l'admin (dashboard)
+router.post('/create', authMiddleware, async (req, res) => {
+  try {
+    // 🔥 Ici c'était la mauvaise propriété
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
+
+    const { email, password, name, prenom = '', nom = '', role, status } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, mot de passe et nom obligatoires' });
@@ -35,7 +68,7 @@ router.post('/register', async (req, res) => {
     const newUser = new User({
       email,
       password: hashedPassword,
-      name,
+      companyName: name,
       prenom,
       nom,
       role: role || 'client',
@@ -43,12 +76,78 @@ router.post('/register', async (req, res) => {
     });
 
     await newUser.save();
+
     res.status(201).json({ message: 'Utilisateur créé avec succès' });
   } catch (error) {
     console.error('Erreur création utilisateur:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
+
+
+// ✅ Inscription classique (publique)
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password, name, prenom = '', nom = '', role, status } = req.body;
+
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'Email, mot de passe et nom obligatoires' });
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: 'Email déjà utilisé' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      email,
+      password: hashedPassword,
+      companyName: name,
+      prenom,
+      nom,
+      role: role || 'client',
+      status: status || 'actif',
+    });
+
+    await newUser.save();
+
+    // 🔑 Générer le token directement
+    const token = jwt.sign(
+      { id: newUser._id, email: newUser.email, role: newUser.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    // 🎯 Émettre l'event socket.io
+    req.app.get('io').emit('newUserCreated', {
+      _id: newUser._id,
+      email: newUser.email,
+      name: newUser.companyName,
+      prenom: newUser.prenom,
+      nom: newUser.nom,
+      role: newUser.role,
+      status: newUser.status,
+    });
+
+    res.status(201).json({
+      message: 'Inscription réussie',
+      token,
+      user: {
+        _id: newUser._id,
+        email: newUser.email,
+        name: newUser.companyName || '',
+        prenom: newUser.prenom || '',
+        nom: newUser.nom || '',
+        role: newUser.role,
+        status: newUser.status,
+      },
+    });
+  } catch (error) {
+    console.error('Erreur création utilisateur:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 
 // ✅ Connexion
 router.post('/login', async (req, res) => {
@@ -62,8 +161,8 @@ router.post('/login', async (req, res) => {
     if (!isMatch) return res.status(401).json({ error: 'Mot de passe incorrect' });
 
     const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET || 'secret',
+      { id: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
@@ -73,7 +172,9 @@ router.post('/login', async (req, res) => {
       user: {
         _id: user._id,
         email: user.email,
-        name: user.name,
+        name: user.companyName || '',
+        prenom: user.prenom || '',
+        nom: user.nom || '',
         role: user.role,
         status: user.status,
       },
@@ -84,23 +185,13 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ✅ Profil utilisateur connecté (auth désactivée temporairement)
-// router.get('/profile', authenticateToken, async (req, res) => {
-router.get('/profile', async (req, res) => {
+// ✅ Récupérer tous les utilisateurs
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user?.id || '').select('-password');
-    if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
-    res.json(user);
-  } catch (error) {
-    console.error('Erreur récupération profil:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
 
-// ✅ Tous les utilisateurs (auth désactivée temporairement)
-// router.get('/', authenticateToken, async (req, res) => {
-router.get('/', async (req, res) => {
-  try {
     const users = await User.find().select('-password');
     res.json(users);
   } catch (error) {
@@ -109,9 +200,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ✅ Un utilisateur par ID (auth désactivée temporairement)
-// router.get('/:id', authenticateToken, async (req, res) => {
-router.get('/:id', async (req, res) => {
+// ✅ Récupérer un utilisateur par ID
+router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
@@ -122,9 +212,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ✅ Mise à jour utilisateur (auth désactivée temporairement)
-// router.put('/:id', authenticateToken, async (req, res) => {
-router.put('/:id', async (req, res) => {
+// ✅ Mise à jour d'un utilisateur
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const updates = req.body;
 
@@ -142,9 +231,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// ✅ Suppression utilisateur (auth désactivée temporairement)
-// router.delete('/:id', authenticateToken, async (req, res) => {
-router.delete('/:id', async (req, res) => {
+// ✅ Suppression d'un utilisateur
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const deleted = await User.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Utilisateur non trouvé' });

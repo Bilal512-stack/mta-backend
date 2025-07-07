@@ -129,6 +129,7 @@ router.get('/by-email/:email', async (req, res) => {
 
 
 // ✅ Mettre à jour la disponibilité (toggle depuis le dashboard)
+// ✅ Mettre à jour la disponibilité (toggle depuis le dashboard)
 router.patch('/:id/availability', async (req, res) => {
   const { id } = req.params;
   const { isAvailable } = req.body;
@@ -148,6 +149,12 @@ router.patch('/:id/availability', async (req, res) => {
       return res.status(404).json({ message: 'Transporteur non trouvé' });
     }
 
+    // 🔥 Notifier en temps réel
+    req.app.get('io').emit('transporterAvailabilityChanged', {
+      transporterId: updated._id,
+      isAvailable: updated.isAvailable,
+    });
+
     res.status(200).json({
       message: 'Disponibilité mise à jour avec succès',
       transporter: updated,
@@ -157,6 +164,7 @@ router.patch('/:id/availability', async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur lors de la mise à jour' });
   }
 });
+
 
 // 🔍 Obtenir un transporteur par ID (⚠️ placer à la fin pour éviter les conflits)
 router.get('/:id', async (req, res) => {
