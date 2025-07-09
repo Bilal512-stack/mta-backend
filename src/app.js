@@ -8,7 +8,7 @@ const connectDB = require('./connectDB');
 // 📦 Import des routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
-const ordersModule = require('./routes/orders'); // Module complet avec io
+const ordersModule = require('./routes/orders');
 const transporterRoutes = require('./routes/transporter');
 const driverRoutes = require('./routes/driver');
 const orderDetailsRoutes = require('./routes/orderDetails');
@@ -21,34 +21,33 @@ const PORT = process.env.PORT || 5000;
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Autoriser seulement ton frontend Vercel et le localhost dev
-const allowedOrigins = [
-  'https://orderdash-delta.vercel.app',
-  'http://localhost:3000',
-  'https://orderdash-b711luc51-bilal-issas-projects.vercel.app',
-];
+// ✅ CORS dynamique — autorise tous les domaines Vercel + localhost
+const dynamicCors = (origin, callback) => {
+  const allowed =
+    !origin ||                             // Pas d'origine ? (ex: Postman)
+    origin.includes('vercel.app') ||      // Domaine Vercel
+    origin.includes('localhost') ||       // Dev local
+    origin.includes('127.0.0.1');         // Variante localhost
 
-// ✅ CORS pour Express
-app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
+  callback(null, { origin: allowed, credentials: true });
+};
 
+// ✅ Middleware CORS global
+app.use(cors(dynamicCors));
 app.use(express.json());
 
-// ✅ Socket.io avec mêmes origines
+// ✅ Socket.io avec même config CORS
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: dynamicCors,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
   }
 });
 
 app.set('io', io);
 
-// ✅ Événements socket
+// ✅ Socket events
 io.on('connection', (socket) => {
   console.log('✅ Socket connecté :', socket.id);
 
@@ -57,10 +56,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// ✅ Injecter io dans les routes qui en ont besoin
+// ✅ Inject io dans routes
 ordersModule.setSocketIO(io);
 
-// ✅ Routes API
+// ✅ API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/transporters', transporterRoutes);
@@ -77,13 +76,13 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-// ❌ Erreurs serveur
+// ❌ Global error handler
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Erreur serveur' });
 });
 
-// ✅ Connexion DB et lancement serveur
+// ✅ Lancer serveur
 connectDB()
   .then(() => {
     server.listen(PORT, '0.0.0.0', () => {
