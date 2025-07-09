@@ -18,42 +18,48 @@ const adminRoutes = require('./routes/adminRoutes');
 const transportOrderRoutes = require('./routes/transportOrderRoutes');
 
 const PORT = process.env.PORT || 5000;
-
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Configuration CORS pour autoriser toutes les connexions pendant les tests
-app.use(cors({
-origin: '*', // 👉 pendant les tests tu laisses ouvert
+// ✅ Autoriser seulement ton frontend Vercel et le localhost dev
+const allowedOrigins = [
+  'https://orderdash-delta.vercel.app',
+  'http://localhost:3000',
+];
 
+// ✅ CORS pour Express
+app.use(cors({
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
+  credentials: true,
 }));
 
 app.use(express.json());
 
+// ✅ Socket.io avec mêmes origines
 const io = new Server(server, {
   cors: {
-    origin: '*', // 👉 socket.io accepte aussi toutes les origines pendant les tests
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
+    credentials: true,
   }
 });
+
 app.set('io', io);
 
-// 🔌 Gestion des connexions socket.io
+// ✅ Événements socket
 io.on('connection', (socket) => {
-  console.log('✅ Nouveau client connecté :', socket.id);
+  console.log('✅ Socket connecté :', socket.id);
 
   socket.on('disconnect', () => {
-    console.log('❌ Client déconnecté :', socket.id);
+    console.log('❌ Socket déconnecté :', socket.id);
   });
 });
 
-// Injecter io dans les routes orders
+// ✅ Injecter io dans les routes qui en ont besoin
 ordersModule.setSocketIO(io);
 
-// 📌 Routes publiques
+// ✅ Routes API
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/transporters', transporterRoutes);
@@ -65,22 +71,22 @@ app.use('/api/order-details', orderDetailsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/transport-orders', transportOrderRoutes);
 
-// 🧾 Gestion des 404
+// ❌ 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-// 💥 Gestion des erreurs serveur
+// ❌ Erreurs serveur
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Erreur serveur' });
 });
 
-// 🚀 Connexion DB + lancement serveur
+// ✅ Connexion DB et lancement serveur
 connectDB()
   .then(() => {
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Serveur lancé sur http://192.168.1.34:${PORT}`);
+      console.log(`🚀 Serveur lancé sur Railway, port : ${PORT}`);
     });
   })
   .catch((err) => {

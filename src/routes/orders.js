@@ -152,10 +152,10 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const orderData = req.body;
 
-    // Correction du status avec la bonne casse
+    console.log('Données reçues:', orderData);
+
     orderData.status = 'En attente';
 
-    // Reconstruction des objets pickup et delivery si nécessaire
     orderData.pickup = {
       senderName: orderData.pickup?.senderName || orderData.senderName,
       senderPhone: orderData.pickup?.senderPhone || orderData.senderPhone,
@@ -168,7 +168,6 @@ router.post('/', authMiddleware, async (req, res) => {
       address: orderData.delivery?.address || orderData.recipientAddress,
     };
 
-    // Supprimer les champs à plat
     delete orderData.senderName;
     delete orderData.senderPhone;
     delete orderData.senderAddress;
@@ -176,7 +175,6 @@ router.post('/', authMiddleware, async (req, res) => {
     delete orderData.recipientPhone;
     delete orderData.recipientAddress;
 
-    // Vérification des champs
     if (!orderData.pickup.senderName || !orderData.pickup.address) {
       return res.status(400).json({ error: 'Informations expéditeur incomplètes.' });
     }
@@ -187,21 +185,20 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Informations essentielles manquantes.' });
     }
 
-    // Gestion du clientId selon rôle
-    if (req.userRole === 'admin') {
-      if (!orderData.clientId) {
-        return res.status(400).json({ error: 'clientId requis pour admin.' });
-      }
+    if (req.user.role === 'admin') {
+      if (!orderData.clientId) return res.status(400).json({ error: 'clientId requis pour admin.' });
     } else {
-      orderData.clientId = req.userId;
+      orderData.clientId = req.user.id;
     }
 
-    // Calcul du montant
+    console.log('Avant calcul montant');
     orderData.montant = calculateOrderAmount(orderData);
+    console.log('Montant calculé:', orderData.montant);
 
     const newOrder = new Order(orderData);
     await newOrder.save();
 
+    const io = req.app.get('io');
     if (io) {
       io.emit('newOrderNotification', {
         id: newOrder._id,
@@ -214,7 +211,11 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json({ orderId: newOrder._id });
   } catch (error) {
     console.error('Erreur création commande :', error);
-    res.status(500).json({ error: 'Erreur serveur lors de la création de la commande' });
+    res.status(500).json({ 
+      error: 'Erreur serveur lors de la création de la commande', 
+      message: error.message, 
+      stack: error.stack 
+    });
   }
 });
 

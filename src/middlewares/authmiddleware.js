@@ -1,45 +1,41 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Transporter = require('../models/Transporter');
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  console.log('Authorization header reçu :', authHeader);
-
-  if (!authHeader) {
-    console.log('Token manquant');
-    return res.status(401).json({ error: 'Token manquant' });
-  }
+  if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
 
   const parts = authHeader.split(' ');
-  if (parts.length !== 2) {
-    console.log('Token mal formaté - parts:', parts);
-    return res.status(401).json({ error: 'Token mal formaté' });
-  }
+  if (parts.length !== 2) return res.status(401).json({ error: 'Token mal formaté' });
 
   const token = parts[1];
-  if (!token) {
-    console.log('Token vide après extraction');
-    return res.status(401).json({ error: 'Token mal formaté' });
-  }
-
-  console.log('Token extrait (premiers caractères) :', token.slice(0, 10) + '...');
+  if (!token) return res.status(401).json({ error: 'Token mal formaté' });
 
   try {
-    console.log('Clé secrète JWT utilisée :', process.env.JWT_SECRET);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Token décodé :', decoded);
 
-    // Remplacer req.userId, req.userEmail, req.userRole par un seul objet req.user
+    let userDoc = null;
+    if (decoded.role === 'client') {
+      userDoc = await User.findById(decoded.id);
+    } else if (decoded.role === 'transporter') {
+      userDoc = await Transporter.findById(decoded.id);
+    } else {
+      return res.status(401).json({ error: 'Rôle utilisateur invalide' });
+    }
+
+    if (!userDoc) {
+      return res.status(401).json({ error: 'Utilisateur non trouvé' });
+    }
+
     req.user = {
-      id: decoded.id,
-      email: decoded.email,
+      id: userDoc._id,
+      email: userDoc.email,
       role: decoded.role,
     };
 
-    console.log('Utilisateur connecté :', req.user);
-
     next();
   } catch (err) {
-    console.error('Erreur vérification token :', err.message);
     return res.status(401).json({ error: 'Token invalide ou expiré' });
   }
 };

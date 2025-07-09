@@ -186,19 +186,22 @@ router.post('/login', async (req, res) => {
 });
 
 // ✅ Récupérer tous les utilisateurs
+// ✅ Récupérer tous les utilisateurs
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    if (req.userRole !== 'admin') {
-      return res.status(403).json({ error: 'Accès interdit' });
+    // ✅ Correction : req.user.role au lieu de req.userRole
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès interdit. Seul un administrateur peut voir tous les utilisateurs.' });
     }
 
-    const users = await User.find().select('-password');
-    res.json(users);
+    const users = await User.find().select('-password'); // On masque les mots de passe
+    res.status(200).json(users);
   } catch (error) {
-    console.error('Erreur récupération utilisateurs:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur lors de la récupération des utilisateurs :', error);
+    res.status(500).json({ error: 'Erreur serveur lors de la récupération des utilisateurs.' });
   }
 });
+
 
 // ✅ Récupérer un utilisateur par ID
 router.get('/:id', authMiddleware, async (req, res) => {

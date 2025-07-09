@@ -6,87 +6,103 @@ const mongoose = require('mongoose');
 
 // GET driver dashboard data
 router.get('/driver-dashboard/:id', async (req, res) => {
-try {
+  try {
     const transporterId = req.params.id;
 
-    // Vérifier validité ObjectId
     if (!mongoose.Types.ObjectId.isValid(transporterId)) {
-    return res.status(400).json({ error: 'Invalid transporter ID' });
+      return res.status(400).json({ error: 'ID transporteur invalide' });
     }
 
-    // Récupérer transporteur
     const transporter = await Transporter.findById(transporterId);
     if (!transporter) {
-    return res.status(404).json({ error: 'Transporter not found' });
+      return res.status(404).json({ error: 'Transporteur non trouvé' });
     }
 
-    // Prochaine commande (status assigned ou in-progress)
+    // Prochaine commande (status assignée ou en cours)
     const nextOrder = await Order.findOne({
-    transporterId: transporter._id.toString(),
-    status: { $in: ['assigned', 'in-progress'] }
-    }).sort({ 'pickup.time': 1 }).lean();
+      transporterId: transporter._id,
+      status: { $in: ['assigned', 'in-progress'] },
+    })
+      .sort({ 'pickup.time': 1 })
+      .lean();
 
-    // Statistiques (total orders, total distance, total earnings)
-const statsAggregation = await Order.aggregate([
-  { $match: { transporterId: transporter._id.toString() } },
-  {
-    $group: {
-      _id: null,
-      totalOrders: { $sum: 1 },
-      totalDistance: { $sum: '$distance' },
-      totalEarnings: { $sum: '$montant' }, // important : montant et pas amount
-    },
-  },
-]);
+    // Statistiques globales
+    const statsAggregation = await Order.aggregate([
+      { $match: { transporterId: transporter._id } },
+      {
+        $group: {
+          _id: null,
+          totalOrders: { $sum: 1 },
+          totalDistance: { $sum: '$distance' },
+          totalEarnings: { $sum: '$montant' },
+        },
+      },
+    ]);
+
     const stats = statsAggregation[0] || {
-    totalOrders: 0,
-    totalDistance: 0,
-    totalEarnings: 0,
+      totalOrders: 0,
+      totalDistance: 0,
+      totalEarnings: 0,
     };
 
-   res.json({
-  isAvailable: transporter.isAvailable,
-  nextOrder: nextOrder
-    ? {
-        id: nextOrder._id,
-        status: nextOrder.status,
-        pickupAddress: nextOrder.pickup?.address,
-        pickupTime: nextOrder.pickup?.time,
-      }
-    : null,
-  stats,
-});
-} catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
-}
+    res.json({
+      isAvailable: transporter.isAvailable,
+      nextOrder: nextOrder
+        ? {
+            id: nextOrder._id,
+            status: nextOrder.status,
+            pickupAddress: nextOrder.pickup?.address,
+            pickupTime: nextOrder.pickup?.time,
+          }
+        : null,
+      stats,
+    });
+  } catch (error) {
+    console.error('Erreur driver dashboard:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// POST update availability
-router.post('/driver-availability/:id', async (req, res) => {
-try {
+// PATCH update availability (plus adapté que POST)
+router.patch('/driver-availability/:id', async (req, res) => {
+  try {
     const transporterId = req.params.id;
     const { isAvailable } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(transporterId)) {
-    return res.status(400).json({ error: 'Invalid transporter ID' });
+      return res.status(400).json({ error: 'ID transporteur invalide' });
+    }
+
+    if (typeof isAvailable !== 'boolean') {
+      return res.status(400).json({ error: 'Le champ isAvailable doit être un booléen' });
     }
 
     const transporter = await Transporter.findByIdAndUpdate(
-    transporterId,
-    { isAvailable },
-    { new: true }
+      transporterId,
+      { isAvailable },
+      { new: true }
     );
 
     if (!transporter) {
-    return res.status(404).json({ error: 'Transporter not found' });
+      return res.status(404).json({ error: 'Transporteur non trouvé' });
     }
 
-    res.json({ message: 'Availability updated', isAvailable: transporter.isAvailable });
-} catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
-}
+    // --- Notification temps réel via Socket.io ---
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('transporterAvailabilityChanged', {
+        transporterId: transporter._id.toString(),
+        isAvailable: transporter.isAvailable,
+        name: transporter.name,
+      });
+    }
+
+    res.json({ message: 'Disponibilité mise à jour', isAvailable: transporter.isAvailable });
+  } catch (error) {
+    console.error('Erreur update disponibilité:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
+
 
 module.exports = router;

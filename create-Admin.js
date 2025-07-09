@@ -6,14 +6,14 @@ require('dotenv').config();
 
 async function createAdmin() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
+    await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
     console.log('Connecté à MongoDB');
 
-    const email = 'admin@example.com';      // change par ton email
-    const plainPassword = 'admin1234';      // choisis ton mot de passe
+    const email = 'admin@mta.com';      // change par ton email
+    const plainPassword = 'admin123';      // choisis ton mot de passe
 
     // Vérifie si admin existe déjà
     const existingAdmin = await Admin.findOne({ email });

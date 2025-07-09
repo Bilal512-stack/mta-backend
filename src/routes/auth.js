@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Transporter = require('../models/Transporter');
 
-// REGISTER
+// ✅ REGISTER - Transporteur
 router.post('/register', async (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password || !name) {
@@ -15,46 +15,46 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ error: 'Utilisateur existe déjà' });
+    const existingTransporter = await Transporter.findOne({ email });
+    if (existingTransporter) {
+      return res.status(409).json({ error: 'Un transporteur avec cet email existe déjà' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ email, password: hashedPassword, name });
-    await newUser.save();
 
-    // Créer le document Transporter lié
-    const newTransporter = await Transporter.create({
+    const newTransporter = new Transporter({
       name,
-      email, // important pour lien
+      email,
+      password: hashedPassword,
       phone: "",
       truckType: "",
       isAvailable: true,
-      currentOrderId: null,
+      currentorderId: null,
       routes: [],
       workDays: [],
-      workHours: [],
+      workHours: { start: '', end: '' },
       vehicles: [],
       onboardingCompleted: false,
       createdAt: new Date(),
     });
 
+    await newTransporter.save();
+
     const token = jwt.sign(
-      { id: newUser._id, email: newUser.email },
+      { id: newTransporter._id, email: newTransporter.email },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     res.status(201).json({
-  message: 'Inscription réussie',
-  token,
-  user: {
-    _id: newTransporter._id.toString(), // Le transporteur _id, clé principale côté frontend
-    email: newUser.email,
-    name: newUser.name,
-  }
-});
+      message: 'Inscription réussie',
+      token,
+      user: {
+        _id: newTransporter._id,
+        email: newTransporter.email,
+        name: newTransporter.name,
+      }
+    });
 
   } catch (error) {
     console.error('Erreur Register:', error);
@@ -62,7 +62,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// LOGIN
+
+// ✅ LOGIN
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -97,17 +98,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ⚠️ Cette ligne doit venir APRÈS les routes comme /login
-router.get('/:id', async (req, res) => {
-  const transporter = await Transporter.findById(req.params.id);
-  if (!transporter) {
-    return res.status(404).json({ message: 'Transporteur non trouvé' });
-  }
-  res.status(200).json(transporter);
-});
 
-
-// ONBOARDING
+// ✅ ONBOARDING
 router.post('/onboarding', async (req, res) => {
   const { uid, routes, workDays, workHours, vehicles } = req.body;
 
@@ -116,8 +108,8 @@ router.post('/onboarding', async (req, res) => {
   }
 
   try {
-    const result = await Transporter.updateOne(
-      { _id: uid }, // 👉 utilise l’_id Mongo natif
+    const updated = await Transporter.findByIdAndUpdate(
+      uid,
       {
         $set: {
           routes,
@@ -126,16 +118,31 @@ router.post('/onboarding', async (req, res) => {
           vehicles,
           onboardingCompleted: true,
         },
-      }
+      },
+      { new: true }
     );
 
-    if (result.matchedCount === 0) {
+    if (!updated) {
       return res.status(404).json({ error: 'Transporteur non trouvé' });
     }
 
     res.status(200).json({ message: 'Onboarding enregistré avec succès' });
   } catch (error) {
     console.error('Erreur onboarding backend :', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+
+// ✅ GET by ID (⚠️ à mettre à la fin pour éviter les conflits avec /login)
+router.get('/:id', async (req, res) => {
+  try {
+    const transporter = await Transporter.findById(req.params.id);
+    if (!transporter) {
+      return res.status(404).json({ message: 'Transporteur non trouvé' });
+    }
+    res.status(200).json(transporter);
+  } catch (error) {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
