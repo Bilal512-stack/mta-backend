@@ -22,29 +22,39 @@ const app = express();
 const server = http.createServer(app);
 
 // ✅ CORS dynamique — autorise tous les domaines Vercel + localhost
-const dynamicCors = (origin, callback) => {
-  const allowed =
-    !origin ||                             // Pas d'origine ? (ex: Postman)
-    origin.includes('vercel.app') ||      // Domaine Vercel
-    origin.includes('localhost') ||       // Dev local
-    origin.includes('127.0.0.1');         // Variante localhost
-
-  callback(null, { origin: allowed, credentials: true });
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || origin.includes('vercel.app') || origin.includes('localhost')) {
+      callback(null, true); // ✅ Autoriser
+    } else {
+      callback(new Error('Not allowed by CORS')); // ❌ Refuser
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
 };
 
+app.use(cors(corsOptions));
+
+
 // ✅ Middleware CORS global
-app.use(cors(dynamicCors));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ✅ Socket.io avec même config CORS
 const io = new Server(server, {
   cors: {
-    origin: dynamicCors,
+    origin: (origin, callback) => {
+      if (!origin || origin.includes('vercel.app') || origin.includes('localhost')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST'],
   }
 });
-
 app.set('io', io);
 
 // ✅ Socket events
