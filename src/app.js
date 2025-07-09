@@ -25,6 +25,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'https://orderdash-delta.vercel.app',
   'http://localhost:3000',
+  'https://orderdash-b711luc51-bilal-issas-projects.vercel.app',
 ];
 
 // ✅ CORS pour Express
