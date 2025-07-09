@@ -8,7 +8,6 @@ const router = express.Router();
 
 // Variable globale pour stocker l'instance Socket.io
 let io;
-
 function setSocketIO(socketIO) {
   io = socketIO;
 }
@@ -25,15 +24,13 @@ function calculateOrderAmount(order) {
   }
 
   const natureBonus = order.nature === 'Camion frigorifique' ? 150 : 0;
-
   return Math.round(baseAmount + truckTypeBonus + natureBonus);
 }
 
-// Récupérer une commande précise avec les infos client et transporteur
+// Récupérer une commande précise
 router.get('/:orderId', authMiddleware, async (req, res) => {
   try {
     const { orderId } = req.params;
-
     if (!ObjectId.isValid(orderId)) {
       return res.status(400).json({ error: 'ID invalide' });
     }
@@ -57,9 +54,7 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
           as: 'transporter',
         },
       },
-      {
-        $unwind: { path: '$transporter', preserveNullAndEmptyArrays: true },
-      },
+      { $unwind: { path: '$transporter', preserveNullAndEmptyArrays: true } },
       {
         $addFields: {
           montant: {
@@ -106,10 +101,10 @@ router.get('/:orderId', authMiddleware, async (req, res) => {
           transporterPhone: '$transporter.phone',
           senderName: { $ifNull: ['$pickup.senderName', 'Expéditeur inconnu'] },
           senderAddress: { $ifNull: ['$pickup.senderAddress', 'Adresse expéditeur inconnue'] },
-          senderPhone: { $ifNull: ['$pickup.senderPhone', 'Téléphone expéditeur inconnu'] },
+          senderPhone: { $ifNull: ['$pickup.senderPhone', 'Tél expéditeur inconnu'] },
           recipientName: { $ifNull: ['$delivery.recipientName', 'Destinataire inconnu'] },
           recipientAddress: { $ifNull: ['$delivery.recipientAddress', 'Adresse destinataire inconnue'] },
-          recipientPhone: { $ifNull: ['$delivery.recipientPhone', 'Téléphone destinataire inconnu'] },
+          recipientPhone: { $ifNull: ['$delivery.recipientPhone', 'Tél destinataire inconnu'] },
         },
       },
     ]);
@@ -130,12 +125,12 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     let orders;
 
-    if (req.userRole === 'admin') {
+    if (req.user.role === 'admin') {
       orders = await Order.find()
         .populate('clientId', 'prenom nom email')
         .sort({ createdAt: -1 });
     } else {
-      orders = await Order.find({ clientId: req.userId })
+      orders = await Order.find({ clientId: req.user.id })
         .populate('clientId', 'prenom nom email')
         .sort({ createdAt: -1 });
     }
@@ -143,17 +138,14 @@ router.get('/', authMiddleware, async (req, res) => {
     res.status(200).json(orders);
   } catch (error) {
     console.error('Erreur récupération des commandes :', error);
-    res.status(500).json({ error: 'Erreur serveur lors de la récupération des commandes' });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Créer une commande avec calcul automatique du montant
+// Créer une commande
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const orderData = req.body;
-
-    console.log('Données reçues:', orderData);
-
     orderData.status = 'En attente';
 
     orderData.pickup = {
@@ -191,14 +183,10 @@ router.post('/', authMiddleware, async (req, res) => {
       orderData.clientId = req.user.id;
     }
 
-    console.log('Avant calcul montant');
     orderData.montant = calculateOrderAmount(orderData);
-    console.log('Montant calculé:', orderData.montant);
-
     const newOrder = new Order(orderData);
     await newOrder.save();
 
-    const io = req.app.get('io');
     if (io) {
       io.emit('newOrderNotification', {
         id: newOrder._id,
@@ -211,67 +199,47 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json({ orderId: newOrder._id });
   } catch (error) {
     console.error('Erreur création commande :', error);
-    res.status(500).json({ 
-      error: 'Erreur serveur lors de la création de la commande', 
-      message: error.message, 
-      stack: error.stack 
-    });
+    res.status(500).json({ error: 'Erreur serveur', message: error.message });
   }
 });
 
 // Modifier une commande
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const orderId = req.params.id;
     const updateData = req.body;
-
     if (updateData.pickup && updateData.delivery && updateData.weight && updateData.truckType && updateData.nature) {
       updateData.status = 'En attente';
       updateData.montant = calculateOrderAmount(updateData);
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, { new: true });
+    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!updatedOrder) return res.status(404).json({ error: 'Commande non trouvée' });
 
-    if (!updatedOrder) {
-      return res.status(404).json({ error: 'Commande non trouvée' });
-    }
-
-    if (io) {
-      io.emit('orderUpdated', updatedOrder);
-    }
-
+    if (io) io.emit('orderUpdated', updatedOrder);
     res.json(updatedOrder);
   } catch (error) {
     console.error('Erreur mise à jour commande :', error);
-    res.status(500).json({ error: 'Erreur serveur lors de la mise à jour de la commande' });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 // Supprimer une commande
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const orderId = req.params.id;
-    const userId = req.userId;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Commande non trouvée' });
 
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ error: 'Commande non trouvée' });
-    }
-
-    if (order.clientId.toString() !== userId && req.userRole !== 'admin') {
+    if (order.clientId.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Non autorisé à supprimer cette commande' });
     }
 
-    await Order.findByIdAndDelete(orderId);
-
-    if (io) {
-      io.emit('orderDeleted', { orderId });
-    }
+    await Order.findByIdAndDelete(req.params.id);
+    if (io) io.emit('orderDeleted', { orderId: req.params.id });
 
     res.json({ message: 'Commande supprimée avec succès' });
   } catch (error) {
     console.error('Erreur suppression commande :', error);
-    res.status(500).json({ error: 'Erreur serveur lors de la suppression de la commande' });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
